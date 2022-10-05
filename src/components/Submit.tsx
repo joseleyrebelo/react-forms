@@ -6,7 +6,7 @@ interface Props {}
 const Submit = ({}: Props) => {
   const formContext = useContext(FormContext);
   const handler = () => {
-    console.log(formContext.data);
+    console.log(formContext.fields);
   };
   return (
     <div

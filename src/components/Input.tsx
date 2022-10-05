@@ -4,10 +4,20 @@ import { IconCircleCheck, IconEye, IconEyeOff } from "@tabler/icons";
 
 import { Colors } from "../helpers/utils/uiSetup";
 import { getTransitions } from "../helpers/utils/uiSetup";
-import FormContext from "../context/FormContext";
-import { FieldTypes, FieldValidationType } from "../types/forms";
+import FormContext, {
+  FieldFormValidated,
+  FormFieldData,
+} from "../context/FormContext";
+import {
+  FieldTypes,
+  DynamicValidationProp,
+  ParsedValidationProp,
+  BluntValidations,
+  ParsedActionableValidationsProp,
+} from "../types/fields";
+import { validate } from "../helpers/validations";
 
-type EventTypes = Extract<keyof Props, "onChange" | "onFocus" | "onBlur">;
+type EventTypes = Extract<keyof InputProps, "onChange" | "onFocus" | "onBlur">;
 
 type EventHandlerType = (e: string) => void;
 
@@ -15,7 +25,7 @@ type EventAbstract =
   | React.ChangeEvent<HTMLInputElement>
   | React.ChangeEvent<HTMLTextAreaElement>;
 
-type Props = {
+export type InputProps = {
   id?: string;
   name?: string;
   placeholder?: string;
@@ -29,10 +39,10 @@ type Props = {
   readOnly?: boolean;
   maxLength?: number;
   autoComplete?: string;
-  validation?: FieldValidationType;
+  validation?: boolean | DynamicValidationProp;
 };
 
-const Input = (props: Props) => {
+const Input = (props: InputProps) => {
   let {
     id,
     type = "text",
@@ -40,104 +50,125 @@ const Input = (props: Props) => {
     placeholder = "",
     readOnly = false,
     maxLength = undefined,
-    validation,
     autoComplete = "off",
-  }: Props = props;
+  }: InputProps = props;
 
-  const name = props.name || id || "random";
+  const name = props.name || id || "random"; // @todo assign random / create a new variable to handle id on Form context
+  const validation: ParsedValidationProp =
+    typeof props.validation === "object"
+      ? props.validation
+      : typeof props.validation === "string"
+      ? { type: props.validation }
+      : props.validation === true
+      ? {
+          type: type === "email" ? "email" : "notEmpty",
+        }
+      : { type: "disabled" };
 
-  const formContext = useContext(FormContext);
+  const { fields, ...formContext } = useContext(FormContext) || null;
 
-  const [value, setValue] = useState(props.value || "");
-
-  const isPassword = type === "password";
-  const isTextArea = type === "textarea";
+  const [value, setValue] = useState<string>(props.value || "");
+  const [isReady, setIsReady] = useState<boolean>(false); // @todo - isValid can be true to start with (depends on value)
+  const [isValid, setIsValid] = useState<boolean>(false); // @todo - isValid can be true to start with (depends on value)
+  const [errorMessage, setErrorMessage] = useState<string>(""); // @todo - isValid can be true to start with (depends on value)
+  const [validationBout, setValidationBout] =
+    useState<ParsedValidationProp>(validation);
 
   const [isOnFocus, setIsOnFocus] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
-  const Tag = isTextArea ? "input" : "textarea";
+  const Tag = type === "textarea" ? "textarea" : "input";
 
-  const inSuccess = false; // @temp
-
-  // validation && validator.isValid;
-  const inError = false; // @temp
-  // validator && !validator.isValid && validator.hasError && !isOnFocus;
+  const inSuccess = props.validation && isValid;
+  const inError = props.validation && !isValid && !!errorMessage && !isOnFocus;
   const errorInHighlight = false; // @temp
   // inError && validator?.showErrorMessage;
 
+  const runValidation = () => {
+    // @todo improve - return object with prop success and errorMessage when declared
+    if (validationBout.type !== "disabled") {
+      // @todo - stackoverflow why typescript is not inferrring the disabled
+      // const validated: ParsedActionableValidationsProp = validate(validation, value);
+      const validated = validate(
+        validationBout as ParsedActionableValidationsProp,
+        value
+      );
+      if (typeof validated === "string") {
+        setErrorMessage(validated);
+        setIsValid(false);
+      } else {
+        setErrorMessage("");
+        setIsValid(validated);
+      }
+    }
+  };
+
   useEffect(() => {
-    if (formContext)
+    if (formContext) {
       formContext.addField(name, {
         name,
         type,
         validation,
         value,
-        isValid: false, // @todo - isValid can be true to start with (depends on value)
+        isValid,
+        validationBout,
+        setValidationBout,
       });
+    }
+    setIsReady(true);
   }, []);
 
+  useEffect(() => runValidation(), [value, validationBout]);
+
+  useEffect(() => {
+    if (isReady && formContext)
+      formContext.updateField(name, { value, isValid });
+  }, [isReady, isValid, value]);
+
   const handleEvent = (eventType: EventTypes, e: EventAbstract) => {
-    const isValid = value !== ""; // @todo - run actual validation function
+    ({
+      onChange: () => setValue(e.target.value),
+      onBlur: () => setIsOnFocus(false),
+      onFocus: () => setIsOnFocus(true),
+    }[eventType]());
 
-    if (formContext) formContext.updateField(name, { value, isValid });
-
-    if (props[eventType]) props[eventType]?.(e.target.value);
-
-    if (eventType === "onChange") setValue(e.target.value);
-    else if (eventType === "onBlur") setIsOnFocus(false);
-    else if (eventType === "onFocus") setIsOnFocus(true);
-  };
-
-  const sortedProps = {
-    value,
-    id,
-    name,
-    readOnly,
-    onBlur: (e: EventAbstract) => handleEvent("onBlur", e),
-    onFocus: (e: EventAbstract) => handleEvent("onFocus", e),
-    onChange: (e: EventAbstract) => handleEvent("onChange", e),
-    maxLength,
-    placeholder,
-    autoComplete,
-    style: { transition: getTransitions(["background", "border"]) },
-    className:
-      `focus:outline-none text-subheading1 px-6 pr-12 py-4 ` +
-      `rounded-xl border-2 w-full border-field-gray libertad ${
-        readOnly
-          ? "border-opacity-100 bg-background-gray-3"
-          : `${
-              inError
-                ? `bg-error-red-light ${errorInHighlight && "border-error-red"}`
-                : "hover:border-icon-gray"
-            } focus:bg-silver focus:border-field-gray border-opacity-100`
-      }`,
-    ...(!isTextArea
-      ? {
-          // onInput: (e: React.FormEvent<HTMLInputElement>) => handleOnInput(e), // @todo to add)
-          type: !isPassword ? type : showPassword ? "text" : "password",
-        }
-      : null),
+    props[eventType]?.(e.target.value);
   };
 
   return (
-    <div className="block">
-      <label className="px-6 libertad text-subtext1 text-navy" htmlFor={id}>
+    <div style={{ display: "block" }}>
+      <label style={{ padding: "24px" }} htmlFor={id}>
         {labelText}
       </label>
-      <div className="mt-3 relative">
-        {(isPassword || inSuccess) && (
+      <div style={{ position: "relative", marginTop: "12px" }}>
+        {(type === "password" || inSuccess) && (
           <div
             className={
               `absolute top-0 right-0 flex items-center px-4 ` +
-              `cursor-pointer ${!isTextArea ? "h-full" : "h-16"} `
+              `cursor-pointer ${type !== "textarea" ? "h-full" : "h-16"} `
             }
+            style={{
+              position: "absolute",
+              top: "0px",
+              right: "0px",
+              display: "flex",
+
+              alignItems: "center",
+              padding: "0px 16px",
+              cursor: "pointer",
+              height: "100%",
+            }}
           >
             {inSuccess && <IconCircleCheck color={Colors.successGreen} />}
-            {isPassword && (
+            {type === "password" && (
               <div
                 className="ml-2"
                 onClick={() => setShowPassword(!showPassword)}
+                style={{
+                  marginLeft: "8px",
+                  display: "flex",
+                  alignItems: "center",
+                }}
               >
                 {showPassword ? (
                   <IconEye color={Colors.metalGrey} />
@@ -148,12 +179,57 @@ const Input = (props: Props) => {
             )}
           </div>
         )}
-        <Tag {...sortedProps} />
+        <Tag
+          value={value}
+          id={id}
+          name={name}
+          readOnly={readOnly}
+          onBlur={(e: EventAbstract) => handleEvent("onBlur", e)}
+          onFocus={(e: EventAbstract) => handleEvent("onFocus", e)}
+          onChange={(e: EventAbstract) => handleEvent("onChange", e)}
+          maxLength={maxLength}
+          placeholder={placeholder}
+          autoComplete={autoComplete}
+          style={{
+            transition: getTransitions(["background", "border"]),
+            width: "100%",
+            padding: "16px 48px 16px 24px",
+            borderRadius: "10px",
+            border: !inError ? "2px solid gray" : "2px solid red",
+            boxSizing: "border-box",
+            // @todo errorinhighlight different colour
+          }}
+          className={
+            `focus:outline-none text-subheading1 px-6 pr-12 py-4 ` +
+            `rounded-xl border-2 w-full border-field-gray libertad ${
+              readOnly
+                ? "border-opacity-100 bg-background-gray-3"
+                : `${
+                    inError
+                      ? `bg-error-red-light ${
+                          errorInHighlight && "border-error-red"
+                        }`
+                      : "hover:border-icon-gray"
+                  } focus:bg-silver focus:border-field-gray border-opacity-100`
+            }`
+          }
+          {...(type !== "textarea"
+            ? {
+                // onInput: (e: React.FormEvent<HTMLInputElement>) => handleOnInput(e), // @todo to add)
+                type:
+                  type !== "password"
+                    ? type
+                    : showPassword
+                    ? "text"
+                    : "password",
+              }
+            : null)}
+        />
       </div>
       <div className="mt-2 text-subtext1">
         {/* The -0.5rem in marginBottom means to balance the class mt-2 spacing. */}
         <div
-          style={{ minHeight: "1.5em", marginBottom: "calc(-1.5em + -0.5rem)" }}
+        // style={{ minHeight: "1.5em", marginBottom: "calc(-1.5em + -0.5rem)" }}
         >
           <p
             style={{
@@ -161,7 +237,7 @@ const Input = (props: Props) => {
             }}
             className={`validation-error text-error-red`}
           >
-            {/* {inError && validator?.errorMessage} */}
+            {!isValid && errorMessage}
           </p>
         </div>
       </div>
