@@ -1,19 +1,12 @@
-import { useState } from "react";
+import React, { useState } from 'react'
 
-import Input, { InputProps } from "./Input";
+import Input, { InputProps } from './Input'
 
 const InputPassword = (props: InputProps) => {
-  const [showPassword, setShowPassword] = useState(false);
+  const [showPassword] = useState(false)
 
-  // @todo toggle
+  // @todo toggle -- setShowPassword
+  return <Input type={showPassword ? 'text' : 'password'} validation={{ type: 'password' }} {...props} />
+}
 
-  return (
-    <Input
-      {...props}
-      type={showPassword ? "text" : "password"}
-      validation={{ type: "password" }}
-    />
-  );
-};
-
-export default InputPassword;
+export default InputPassword
