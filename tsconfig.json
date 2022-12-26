@@ -6,8 +6,8 @@
     "esModuleInterop": true,
     "outDir": "dist",
     "target": "es6",
-    "module": "es6",
+    "module": "commonjs",
     "moduleResolution": "node"
   },
-  "include": ["src"]
+  "include": ["src", "srcExcluded/react-app-env.d.ts", "srcExcluded/index.tsx"]
 }
